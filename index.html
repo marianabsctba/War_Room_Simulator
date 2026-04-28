@@ -150,6 +150,48 @@ canvas{display:none}
  .card{padding:16px;border-radius:20px}
  .timeline{display:grid;grid-template-columns:repeat(2,1fr)}
 }
+
+.pdfPage{
+  max-width:980px;margin:0 auto;background:#f8fbfa;color:#14251f;border-radius:22px;
+  padding:34px;box-shadow:0 28px 90px rgba(0,0,0,.38);border:1px solid rgba(10,30,24,.18);
+}
+.pdfCover{
+  border:2px solid #17382d;border-radius:20px;padding:26px;background:
+  linear-gradient(135deg,rgba(57,255,136,.10),rgba(255,255,255,.92));
+  margin-bottom:22px;
+}
+.pdfKicker{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#3c6658;font-weight:900;margin-bottom:8px}
+.pdfTitle{font-family:Georgia,serif;font-size:34px;line-height:1.05;color:#102c23;margin:0 0 8px}
+.pdfSub{font-size:14px;color:#4d675d;line-height:1.5;margin:0}
+.resultSeal{
+  display:inline-flex;align-items:center;gap:8px;margin-top:18px;border-radius:999px;padding:10px 14px;
+  font-weight:950;font-size:13px;border:1px solid #17382d;background:#102c23;color:#fff;
+}
+.resultSeal.fail{background:#6b1428;border-color:#a51e3b}
+.scoreGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0 22px}
+.scoreCard{background:#fff;border:1px solid #d9e5e0;border-radius:18px;padding:14px}
+.scoreCard span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#60786f;font-weight:900}
+.scoreCard b{display:block;font-size:28px;color:#102c23;margin-top:5px}
+.scoreCard.bad b{color:#9e1735}
+.reportSection{background:#fff;border:1px solid #d9e5e0;border-radius:18px;padding:18px;margin:14px 0}
+.reportSection h3{margin:0 0 10px;color:#102c23;font-size:18px}
+.criteriaList{display:grid;gap:8px}
+.criterion{display:flex;justify-content:space-between;gap:12px;border-bottom:1px dashed #d9e5e0;padding:8px 0;font-size:14px}
+.criterion:last-child{border-bottom:0}
+.ok{color:#0b7a46;font-weight:900}
+.failTxt{color:#b2183a;font-weight:900}
+.timelineReport{display:grid;gap:12px}
+.timelineItem{border-left:4px solid #17382d;background:#f3f7f5;border-radius:12px;padding:12px 14px}
+.timelineItem b{color:#102c23}
+.timelineItem p{margin:6px 0 0;color:#415850;line-height:1.45}
+.reportActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+@media(max-width:720px){
+ .pdfPage{padding:18px;border-radius:18px}
+ .pdfTitle{font-size:26px}
+ .scoreGrid{grid-template-columns:1fr}
+ .criterion{flex-direction:column;gap:3px}
+}
+
 </style>
 </head>
 <body class="stage-green">
@@ -184,14 +226,7 @@ canvas{display:none}
   <section class="stageWrap" id="stageWrap">
     <div class="scenes" id="scenes"></div>
     <div class="finalScreen" id="finalScreen">
-      <div class="card">
-        <div class="sceneTitle">
-          <h2>Relatório Final da Crise</h2>
-          <span class="badge" id="finalBadge">ANÁLISE</span>
-        </div>
-        <div class="report" id="report"></div>
-        <div id="certArea"></div>
-      </div>
+      <div id="report"></div><div id="certArea"></div>
     </div>
   </section>
 </main>
@@ -385,47 +420,102 @@ function showFinal(){
   document.getElementById("scenes").style.display="none";
   document.getElementById("finalScreen").style.display="block";
   const score = finalScore();
-  const passed = decisions.length === scenesData.length && score>=88 && state.forensic>=78 && state.legal>=74 && state.backup>=62 && state.evidence>=60 && state.exposure<=45 && decisions.filter(d=>d && d.timeout).length===0;
-  document.getElementById("finalBadge").textContent = passed ? "APROVADO" : "REPROVADO";
-  const timeline = decisions.map((d,i)=>`${i+1}. ${d.time} — ${d.scene}\nDecisão: ${d.choice}\nAnálise: ${d.comment}`).join("\n\n");
-  const report = `Score Final: ${score}/100
-Score Técnico: ${Math.round(state.tech)}/100
-Score Forense: ${Math.round(state.forensic)}/100
-Score Jurídico: ${Math.round(state.legal)}/100
-Continuidade: ${Math.round(state.continuity)}/100
-Integridade do Backup: ${Math.round(state.backup)}/100
+  const timeoutCount = decisions.filter(d=>d && d.timeout).length;
+  const checks = [
+    {label:"Todas as cenas concluídas", value:`${decisions.length}/${scenesData.length}`, ok: decisions.length === scenesData.length},
+    {label:"Sem expiração de tempo", value: timeoutCount === 0 ? "0 expiradas" : `${timeoutCount} expirada(s)`, ok: timeoutCount === 0},
+    {label:"Score final mínimo", value:`${score}/100 · mínimo 88`, ok: score >= 88},
+    {label:"Score forense mínimo", value:`${Math.round(state.forensic)}/100 · mínimo 78`, ok: state.forensic >= 78},
+    {label:"Score jurídico mínimo", value:`${Math.round(state.legal)}/100 · mínimo 74`, ok: state.legal >= 74},
+    {label:"Evidência preservada mínima", value:`${Math.round(state.evidence)}/100 · mínimo 60`, ok: state.evidence >= 60},
+    {label:"Exposição máxima do atacante", value:`${Math.round(state.exposure)}/100 · máximo 45`, ok: state.exposure <= 45},
+    {label:"Integridade do backup mínima", value:`${Math.round(state.backup)}/100 · mínimo 62`, ok: state.backup >= 62}
+  ];
+  const passed = checks.every(c=>c.ok);
+  const failed = checks.filter(c=>!c.ok);
+  const statusText = passed ? "APROVADO" : "REPROVADO";
+  const timeline = decisions.map((d,i)=>`
+    <div class="timelineItem">
+      <b>${i+1}. ${d.time} — ${d.scene}</b>
+      <p><strong>Decisão:</strong> ${d.choice}</p>
+      <p><strong>Análise:</strong> ${d.comment}</p>
+    </div>
+  `).join("");
+  const reason = passed
+    ? "Todos os critérios eliminatórios foram cumpridos. A condução preservou evidências, controlou exposição e manteve recuperação tecnicamente defensável."
+    : "A reprovação ocorreu por critério eliminatório, mesmo com score final alto. Em crise real, uma única área crítica abaixo do mínimo pode impedir recuperação segura.";
+  const failBox = failed.length ? `
+    <div class="reportSection">
+      <h3>Motivo exato da reprovação</h3>
+      <div class="criteriaList">
+        ${failed.map(f=>`<div class="criterion"><span>${f.label}</span><strong class="failTxt">${f.value}</strong></div>`).join("")}
+      </div>
+    </div>` : "";
+  document.getElementById("report").innerHTML = `
+    <div class="pdfPage">
+      <div class="pdfCover">
+        <div class="pdfKicker">Relatório Final da Crise · Mariana BS</div>
+        <h1 class="pdfTitle">CRISE 02:13 — Simulador Hardcore de Decisão em Incidente Cibernético</h1>
+        <p class="pdfSub">Relatório técnico-executivo gerado ao final da simulação, com avaliação de decisão, preservação forense, continuidade, risco jurídico e integridade de backup.</p>
+        <div class="resultSeal ${passed ? "" : "fail"}">${statusText}</div>
+      </div>
 
-Resumo executivo:
-A crise simulada envolveu abuso de identidade, movimentação lateral, risco de ransomware pré-impacto, backup suspeito, comunicação executiva, preservação de evidências e recuperação controlada.
+      <div class="scoreGrid">
+        <div class="scoreCard"><span>Score Final</span><b>${score}/100</b></div>
+        <div class="scoreCard"><span>Técnico</span><b>${Math.round(state.tech)}/100</b></div>
+        <div class="scoreCard"><span>Forense</span><b>${Math.round(state.forensic)}/100</b></div>
+        <div class="scoreCard"><span>Jurídico</span><b>${Math.round(state.legal)}/100</b></div>
+        <div class="scoreCard"><span>Continuidade</span><b>${Math.round(state.continuity)}/100</b></div>
+        <div class="scoreCard ${state.backup < 62 ? "bad" : ""}"><span>Integridade do Backup</span><b>${Math.round(state.backup)}/100</b></div>
+      </div>
 
-Linha do tempo e decisões:
-${timeline}
+      ${failBox}
 
-Lições aprendidas:
-- Contenção sem evidência vira chute com dashboard.
-- Backup só é backup depois de validação.
-- Comunicação executiva precisa separar fato, hipótese, impacto e próxima decisão.
-- Identidade é perímetro. Sim, ainda tem gente fingindo que não.
-- Recuperação deve ocorrer por ondas, com monitoramento e critério de rollback.
+      <div class="reportSection">
+        <h3>Critérios de aprovação</h3>
+        <div class="criteriaList">
+          ${checks.map(c=>`<div class="criterion"><span>${c.label}</span><strong class="${c.ok ? "ok" : "failTxt"}">${c.value}</strong></div>`).join("")}
+        </div>
+      </div>
 
-Recomendações pós-incidente:
-1. Reforçar MFA em acessos administrativos internos e remotos.
-2. Revisar privilégios, contas de serviço e rotação de credenciais.
-3. Validar backup com teste recorrente de restauração isolada.
-4. Formalizar cadeia de custódia e coleta forense.
-5. Aprimorar detecção para AD, VPN, PowerShell e comportamento anômalo.
-6. Criar playbooks de comunicação executiva e regulatória.
-7. Definir critérios objetivos para operação degradada.`;
-  document.getElementById("report").textContent = report;
+      <div class="reportSection">
+        <h3>Resumo executivo</h3>
+        <p>${reason}</p>
+        <p>A simulação envolveu abuso de identidade, ruído operacional, falso positivo, movimentação lateral, suspeita de exfiltração, backup sob incerteza e recuperação controlada.</p>
+      </div>
+
+      <div class="reportSection">
+        <h3>Linha do tempo e decisões</h3>
+        <div class="timelineReport">${timeline}</div>
+      </div>
+
+      <div class="reportSection">
+        <h3>Lições aprendidas</h3>
+        <p>Contenção sem evidência vira chute com dashboard. Backup só é backup depois de validação. Comunicação executiva precisa separar fato, hipótese, impacto e próxima decisão. Identidade é perímetro. Recuperação deve ocorrer por ondas, com monitoramento e critério de rollback.</p>
+      </div>
+
+      <div class="reportSection">
+        <h3>Recomendações pós-incidente</h3>
+        <p>Reforçar MFA administrativo, revisar privilégios, rotacionar contas de serviço por risco, validar backup periodicamente, formalizar cadeia de custódia, aprimorar detecção para AD/VPN/PowerShell e criar playbooks de comunicação executiva e regulatória.</p>
+      </div>
+    </div>`;
   const cert = document.getElementById("certArea");
   if(passed){
-    cert.innerHTML = `<hr style="border-color:rgba(255,255,255,.14);margin:22px 0">
-      <h3>Certificado desbloqueado</h3>
-      <input class="nameInput" id="studentName" placeholder="Digite o nome do participante" />
-      <button class="primary" onclick="downloadCert()">Baixar certificado PNG</button>`;
+    cert.innerHTML = `<div class="pdfPage" style="margin-top:18px">
+      <div class="reportSection">
+        <h3>Certificado desbloqueado</h3>
+        <input class="nameInput" id="studentName" placeholder="Digite o nome do participante" style="background:#fff;color:#102c23;border-color:#d9e5e0" />
+        <div class="reportActions"><button class="primary" onclick="downloadCert()">Baixar certificado PNG</button></div>
+      </div>
+    </div>`;
   } else {
-    cert.innerHTML = `<div class="locked"><b>Certificado bloqueado.</b><br>Critérios: concluir todas as cenas sem expirar tempo, score final ≥ 88, forense ≥ 78, jurídico ≥ 74, evidência ≥ 60, exposição ≤ 45 e backup sem estado crítico. Reinicie e tente de novo. A crise não perdoou, mas pelo menos não mandou boleto.</div>
-      <br><button class="secondary" onclick="location.reload()">Reiniciar simulação</button>`;
+    cert.innerHTML = `<div class="pdfPage" style="margin-top:18px">
+      <div class="reportSection">
+        <h3>Certificado bloqueado</h3>
+        <p>Corrija os critérios eliminatórios acima para desbloquear o certificado. Score alto não compensa backup fraco, evidência perdida ou tempo expirado.</p>
+        <div class="reportActions"><button class="secondary" onclick="location.reload()">Reiniciar simulação</button></div>
+      </div>
+    </div>`;
   }
 }
 
